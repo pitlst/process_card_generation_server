@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from litestar import Request, post
-from litestar.status_codes import HTTP_201_CREATED
+from litestar.response import Response
+from litestar.status_codes import HTTP_200_OK, HTTP_201_CREATED
 
 from app.models import (
     ImageBatchUploadResponse,
@@ -12,37 +13,7 @@ from app.models import (
     ProcessCardInput,
 )
 from app.services.image_store import get_image_store
-
-
-def _collect_image_refs(data: ProcessCardInput) -> dict[str, list[str]]:
-    """收集 ProcessCardInput 中所有引用的 image_id → 字段路径 映射。"""
-    refs: dict[str, list[str]] = {}
-
-    for i, step in enumerate(data.process_step_resources):
-        if step.image_id:
-            refs.setdefault(step.image_id, []).append(
-                f"process_step_resources[{i}].image_id"
-            )
-
-    for i, body in enumerate(data.step_bodies):
-        if body.image_id:
-            refs.setdefault(body.image_id, []).append(
-                f"step_bodies[{i}].image_id"
-            )
-        if body.image_page_1_id:
-            refs.setdefault(body.image_page_1_id, []).append(
-                f"step_bodies[{i}].image_page_1_id"
-            )
-        if body.image_page_2_id:
-            refs.setdefault(body.image_page_2_id, []).append(
-                f"step_bodies[{i}].image_page_2_id"
-            )
-        if body.image_page_3_id:
-            refs.setdefault(body.image_page_3_id, []).append(
-                f"step_bodies[{i}].image_page_3_id"
-            )
-
-    return refs
+from app.services.pdf_service import ProcessCardPDFService
 
 
 # ──────────────────────────────────────────────
@@ -120,21 +91,36 @@ async def upload_images(request: Request) -> ImageBatchUploadResponse:
 
 @post(
     path="/api/process-card/generate",
-    summary="接收工序卡数据并生成 PDF",
+    summary="生成工序卡 PDF",
     description=(
         "接收完整的工序卡 JSON 数据（图片字段填入 image_id），"
-        "校验图片引用有效性后，生成 PDF 工序卡文件。"
+        "校验图片引用有效性后，生成 PDF 工序卡文件并返回。"
     ),
-    status_code=HTTP_201_CREATED,
+    status_code=HTTP_200_OK,
 )
-async def generate_process_card(data: ProcessCardInput) -> dict:
-    """接收工序卡输入数据，校验图片引用。"""
+async def generate_process_card(data: ProcessCardInput) -> Response:
+    """生成工序卡 PDF 文件。"""
     store = get_image_store()
 
-    refs = _collect_image_refs(data)
-    referenced_ids = list(refs.keys())
+    # ── 1. 收集所有 image_id 引用及其字段路径 ────────────────
+    refs: dict[str, list[str]] = {}
+    for i, step in enumerate(data.process_step_resources):
+        if step.image_id:
+            refs.setdefault(step.image_id, []).append(
+                f"process_step_resources[{i}].image_id"
+            )
+    for i, body in enumerate(data.step_bodies):
+        for field_name, fid in [
+            ("image_id", body.image_id),
+            ("image_page_1_id", body.image_page_1_id),
+            ("image_page_2_id", body.image_page_2_id),
+            ("image_page_3_id", body.image_page_3_id),
+        ]:
+            if fid:
+                refs.setdefault(fid, []).append(f"step_bodies[{i}].{field_name}")
 
-    existing = await store.get_batch(referenced_ids)
+    # ── 2. 批量校验图片是否存在 ──────────────────────────────
+    existing = await store.get_batch(list(refs.keys()))
     missing: list[InvalidImageReference] = []
     for iid, field_paths in refs.items():
         if iid not in existing:
@@ -142,21 +128,27 @@ async def generate_process_card(data: ProcessCardInput) -> dict:
                 missing.append(InvalidImageReference(field_path=fp, image_id=iid))
 
     if missing:
-        return {
-            "status": "error",
-            "message": f"引用了 {len(missing)} 个不存在的图片，请先上传图片",
-            "missing_images": [m.model_dump() for m in missing],
-        }
+        return Response(
+            content={
+                "status": "error",
+                "message": f"引用了 {len(missing)} 个不存在的图片，请先上传图片",
+                "missing_images": [m.model_dump() for m in missing],
+            },
+            status_code=400,
+            media_type="application/json",
+        )
 
-    return {
-        "status": "ok",
-        "message": "数据校验通过，图片引用全部有效，已成功接收工序卡数据",
-        "summary": {
-            "process_number": data.basic_info.process_number,
-            "process_name": data.basic_info.process_name,
-            "step_count": len(data.process_step_resources),
-            "action_count": len(data.step_bodies),
-            "material_count": len(data.material_list),
-            "referenced_image_count": len(referenced_ids),
+    # ── 3. 生成 PDF ─────────────────────────────────────────
+    pdf_service = ProcessCardPDFService(image_store=store)
+    pdf_bytes = await pdf_service.generate(data)
+
+    filename = (data.basic_info.document_number or "process_card") + ".pdf"
+    return Response(
+        content=pdf_bytes,
+        status_code=HTTP_200_OK,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="{filename}"',
+            "Content-Length": str(len(pdf_bytes)),
         },
-    }
+    )

@@ -1,0 +1,708 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>{{ basic_info.document_name or basic_info.process_name or '工序卡' }}</title>
+  <style>
+    @page { size: A4 landscape; margin: 0; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #e9e9e9;
+      color: #000;
+      font-family: "Source Han Serif CN Medium", "Source Han Serif CN", "思源宋体 CN Medium", "思源宋体 CN", "Noto Serif SC", "SimSun", serif;
+      font-weight: 500;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .page {
+      position: relative;
+      width: 297mm;
+      height: 209mm;
+      margin: 0 auto;
+      padding: 8mm 8mm 8mm;
+      background: #fff;
+      page-break-after: always;
+      overflow: hidden;
+    }
+    .page:last-child { page-break-after: auto; }
+    .page::before {
+      content: "";
+      position: absolute;
+      inset: 8mm;
+      border: 1.2px solid #000;
+      pointer-events: none;
+    }
+    .page-footer {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 10.5mm;
+      text-align: center;
+      font-size: 9pt;
+      color: #333;
+      z-index: 2;
+    }
+    .cover .page-footer { display: none; }
+    .confidential {
+      position: relative;
+      z-index: 1;
+      margin: 0 0 2mm 0;
+      font-size: 9pt;
+      font-weight: 700;
+    }
+    .inner-frame {
+      position: absolute;
+      z-index: 1;
+      left: 18.5mm;
+      top: 24mm;
+      width: 260mm;
+      height: 162mm;
+      border: 1px solid #000;
+      padding: 17mm 13mm 10mm;
+    }
+    .cover-title {
+      margin: 0 0 20mm;
+      text-align: center;
+      font-size: 26pt;
+      font-weight: 700;
+      font-family: "Source Han Serif CN Heavy", "Source Han Serif CN", "思源宋体 CN Heavy", "思源宋体 CN", "Noto Serif SC", serif;
+      letter-spacing: 0;
+    }
+    .cover-lines {
+      width: 236mm;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      column-gap: 16mm;
+      row-gap: 2mm;
+      font-size: 14pt;
+    }
+    .cover-field {
+      min-width: 0;
+      height: 13mm;
+      display: flex;
+      align-items: flex-start;
+      white-space: nowrap;
+    }
+    .cover-label {
+      flex: 0 0 auto;
+      line-height: 1.35;
+    }
+    .cover-value {
+      flex: 1 1 auto;
+      min-width: 0;
+      min-height: calc(1.35em + 3.5mm);
+      margin-left: 2.5mm;
+      padding: 0 0 3.5mm;
+      border-bottom: 1px solid #000;
+      line-height: 1.35;
+    }
+    .cover-field.blank .cover-value { border-bottom-color: transparent; }
+    .signature {
+      margin-top: 15mm;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      column-gap: 18mm;
+    }
+    .cover-org {
+      margin-top: 5mm;
+      text-align: center;
+      font-size: 14pt;
+      font-weight: 700;
+      font-family: "Source Han Serif CN Heavy", "Source Han Serif CN", "思源宋体 CN Heavy", "思源宋体 CN", "Noto Serif SC", serif;
+    }
+    .cover-date {
+      margin-top: 3.5mm;
+      text-align: center;
+      font-size: 14pt;
+    }
+    table { border-collapse: collapse; width: 100%; table-layout: fixed; }
+    td, th {
+      border: 1px solid #000;
+      padding: 2mm 1.5mm;
+      font-size: 10pt;
+      line-height: 1.25;
+      text-align: center;
+      vertical-align: middle;
+      word-break: break-word;
+    }
+    th { font-weight: 700; }
+    h1, .reference-title, .version-history-title, th, .section-title, .vertical-label, .step-title td {
+      font-family: "Source Han Serif CN Heavy", "Source Han Serif CN", "思源宋体 CN Heavy", "思源宋体 CN", "Noto Serif SC", serif;
+      font-weight: 700;
+    }
+    .doc-header {
+      position: relative;
+      z-index: 1;
+      margin: 8mm auto 2mm;
+      width: 264mm;
+    }
+    .doc-header.step-page-header { width: 272mm; }
+    .doc-header td { height: 9mm; padding: 1mm; font-size: 8.8pt; }
+    .doc-header .header-label { font-weight: 700; }
+    .doc-header .card-name {
+      font-size: 11.5pt;
+      font-weight: 700;
+      line-height: 1.35;
+    }
+    .content-shell {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: 10mm 254mm;
+      width: 264mm;
+      height: 143mm;
+      margin: 0 auto;
+      border: 1px solid #000;
+      overflow: hidden;
+    }
+    .vertical-label {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-right: 1px solid #000;
+      font-size: 10pt;
+      font-weight: 700;
+      line-height: 1.45;
+      white-space: pre-line;
+    }
+    .content-body {
+      min-height: 0;
+      padding: 2mm;
+      overflow: hidden;
+    }
+    .reference-title {
+      margin: 1mm 0 5mm;
+      text-align: center;
+      font-size: 16pt;
+      font-weight: 700;
+    }
+    .reference-frame {
+      position: absolute;
+      z-index: 1;
+      left: 24.5mm;
+      top: 24mm;
+      width: 248mm;
+      height: 150mm;
+      border: 1px solid #000;
+      padding: 10mm 12mm;
+    }
+    .reference-description {
+      width: 220mm;
+      margin: 0 auto 4mm;
+      text-indent: 2em;
+      text-align: justify;
+      font-size: 9.5pt;
+      line-height: 1.55;
+    }
+    .reference-table {
+      width: 220mm;
+      margin: 0 auto 3mm;
+    }
+    .reference-table th,
+    .reference-table td,
+    .version-history-table th,
+    .version-history-table td {
+      height: 7mm;
+      padding: 0.7mm 1.2mm;
+      font-size: 9pt;
+    }
+    .reference-table th:nth-child(1),
+    .reference-table td:nth-child(1) {
+      width: 20mm;
+    }
+    .reference-table th:nth-child(2),
+    .reference-table td:nth-child(2) {
+      width: 70mm;
+    }
+    .version-history-title {
+      margin: 0 0 2mm;
+      text-align: center;
+      font-size: 16pt;
+      font-weight: 700;
+    }
+    .version-history-table {
+      width: 220mm;
+      margin: 0 auto;
+    }
+    .bom-table th, .bom-table td {
+      height: 6.15mm;
+      padding: 0.55mm;
+      font-size: 7.9pt;
+      line-height: 1.08;
+      overflow: hidden;
+    }
+    .bom-group th { font-size: 9.5pt; height: 6.2mm; }
+    .tools-table th, .tools-table td { height: 9mm; font-size: 10pt; }
+    .tools-table th:first-child, .tools-table td:first-child { width: 22mm; }
+    .flow-wrap {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 3mm;
+    }
+    .flow-row {
+      display: grid;
+      grid-template-columns: 1fr 7mm 1fr 7mm 1fr 7mm 1fr;
+      align-items: center;
+      width: 100%;
+      gap: 1.8mm;
+    }
+    .flow-card {
+      height: 55mm;
+      border: 1.2px solid #000;
+      display: grid;
+      grid-template-rows: 8mm 1fr;
+      background: #fff;
+      overflow: hidden;
+    }
+    .flow-card-title {
+      border-bottom: 1px solid #000;
+      padding: 1mm 1.4mm;
+      text-align: left;
+      font-size: 9pt;
+      font-weight: 700;
+      line-height: 1.15;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .flow-card-media {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5mm;
+    }
+    .flow-card-media img {
+      max-width: 100%;
+      max-height: 43mm;
+      object-fit: contain;
+    }
+    .flow-arrow {
+      font-size: 21pt;
+      font-family: SimSun, serif;
+      font-weight: 700;
+      text-align: center;
+      line-height: 1;
+    }
+    .flow-down {
+      height: 6mm;
+      text-align: center;
+      font-size: 18pt;
+      font-weight: 700;
+      line-height: 7mm;
+    }
+    .resource-table th, .resource-table td {
+      height: 9mm;
+      padding: 1mm;
+      font-size: 8.5pt;
+    }
+    .resource-table th:nth-child(1) { width: 16mm; }
+    .resource-table th:nth-child(2) { width: 35mm; }
+    .resource-table th:nth-child(3) { width: 54mm; }
+    .resource-table th:nth-child(4) { width: 38mm; }
+    .resource-table th:nth-child(5) { width: 22mm; }
+    .resource-table th:nth-child(6) { width: 28mm; }
+    .resource-table td:nth-child(3),
+    .resource-table td:nth-child(4) {
+      white-space: pre-line;
+      line-height: 1.35;
+    }
+    .flow-legend {
+      position: absolute;
+      z-index: 2;
+      left: 28mm;
+      bottom: 18.5mm;
+      font-size: 8.5pt;
+      line-height: 1.35;
+      white-space: nowrap;
+    }
+    .flow-legend strong { font-weight: 700; }
+    .step-header {
+      position: relative;
+      z-index: 1;
+      width: 264mm;
+      margin: 8mm auto 2mm;
+    }
+    .step-header td { height: 8mm; padding: 1mm; font-size: 9pt; }
+    .step-detail-card {
+      position: relative;
+      z-index: 1;
+      width: 264mm;
+      height: 170mm;
+      margin: 12mm auto 0;
+      border: 1.2px solid #000;
+      overflow: hidden;
+    }
+    .step-detail-card.with-page-header {
+      width: 272mm;
+      height: 150mm;
+      margin: 0 auto;
+    }
+    .step-title td { font-size: 10pt; font-weight: 700; }
+    .step-content-frame {
+      position: relative;
+      z-index: 1;
+      width: 264mm;
+      height: 136mm;
+      margin: 0 auto;
+      border: 1px solid #000;
+      overflow: hidden;
+      padding: 3mm 4mm;
+    }
+    .step-detail-card .step-content-frame {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      border: 0;
+    }
+    .step-body {
+      width: 100%;
+      height: 100%;
+    }
+    .step-body.side {
+      display: grid;
+      grid-template-columns: 195mm 1fr;
+      gap: 4mm;
+      align-items: stretch;
+    }
+    .step-body.vertical {
+      display: flex;
+      flex-direction: column;
+      gap: 2.5mm;
+    }
+    .step-image {
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      min-height: 0;
+      border: 1px solid #000;
+      padding: 2mm;
+    }
+    .step-body.vertical .step-image { height: 100mm; border: 0; padding: 0; }
+    .step-body.side .step-image { height: 100%; }
+    .step-image img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+    }
+    .step-text {
+      border: 0;
+      padding: 3mm 4mm;
+      font-size: 9.5pt;
+      line-height: 1.55;
+      min-height: 0;
+      overflow: hidden;
+      text-align: left;
+    }
+    .step-body.vertical .step-text {
+      width: 100%;
+      margin: 0;
+      min-height: 30mm;
+    }
+    .step-body.side .step-text {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+    }
+    .step-text.only-text {
+      width: 100%;
+      min-height: 124mm;
+      margin: 0;
+      border: 0;
+      font-size: 11pt;
+      line-height: 1.7;
+    }
+    .step-text p { margin: 0 0 1.5mm; }
+    .step-text .label {
+      font-weight: 700;
+      margin: 0 0 1mm;
+    }
+    .step-text .block + .label { margin-top: 2.2mm; }
+    .step-line {
+      margin: 0 0 3mm;
+    }
+    .step-line-label { font-weight: 700; }
+    .step-image-page-title {
+      position: relative;
+      z-index: 1;
+      width: 272mm;
+      margin: 0 auto 2mm;
+      text-align: center;
+      font-size: 12pt;
+      font-weight: 700;
+    }
+    .step-image-page-card {
+      position: relative;
+      z-index: 1;
+      width: 272mm;
+      height: 141mm;
+      margin: 0 auto;
+      border: 1.2px solid #000;
+      padding: 3mm;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    .step-image-page-card img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+    }
+  </style>
+</head>
+<body>
+
+{%- set ns = namespace(page=0) -%}
+
+{%- macro confidentiality() -%}
+{% if basic_info.confidentiality %}<div class="confidential">{{ basic_info.confidentiality }}</div>{% endif %}
+{%- endmacro -%}
+
+{%- macro page_footer() -%}
+{% set ns.page = ns.page + 1 %}
+<div class="page-footer">第 {{ ns.page }} 页 共 {{ total_pages }} 页</div>
+{%- endmacro -%}
+
+{%- macro doc_header(step_page=False) -%}
+<table class="doc-header{% if step_page %} step-page-header{% endif %}">
+  <colgroup>
+    <col style="width:55mm"><col style="width:38mm"><col style="width:24mm"><col style="width:35mm">
+    <col style="width:29mm"><col style="width:31mm"><col style="width:37mm"><col style="width:15mm">
+  </colgroup>
+  <tr>
+    <td>{{ basic_info.company or '' }}</td>
+    <td class="card-name" rowspan="2">{{ basic_info.document_name or basic_info.process_name or '' }}</td>
+    <td class="header-label">{{ '工步号' if step_page else '工序号' }}</td>
+    <td class="header-label">{{ '工步名称' if step_page else '工序名称' }}</td>
+    <td class="header-label">工序标识</td>
+    <td class="header-label">零部件图号</td>
+    <td class="header-label">零部件名称</td>
+    <td class="header-label">版本</td>
+  </tr>
+  <tr>
+    <td>{{ basic_info.manufacturing_center or '' }}</td>
+    <td>{{ header_step_number or basic_info.process_number or '' }}</td>
+    <td>{{ header_step_name or basic_info.process_name or '' }}</td>
+    <td>{{ step_markers }}</td>
+    <td>{{ basic_info.part_drawing_number or '' }}</td>
+    <td>{{ basic_info.part_name or '' }}</td>
+    <td>{{ basic_info.version or '' }}</td>
+  </tr>
+</table>
+{%- endmacro -%}
+
+{%- macro image_tag(image_id) -%}
+{% if image_id and image_id in images %}<img src="{{ images[image_id] }}" alt="配图" />{% endif %}
+{%- endmacro -%}
+
+
+{# ────────────────────── Cover Page ────────────────────── #}
+<section class="page cover">
+  {{ confidentiality() }}
+  <div class="inner-frame">
+    <h1 class="cover-title">{{ basic_info.document_type or '工艺文件' }}</h1>
+    <div class="cover-lines">
+      <div class="cover-field"><span class="cover-label">产品型号：</span><span class="cover-value">{{ basic_info.project_name or '' }}</span></div>
+      <div class="cover-field"><span class="cover-label">文件编号：</span><span class="cover-value">{{ basic_info.document_number or '' }}</span></div>
+      <div class="cover-field"><span class="cover-label">文件名称：</span><span class="cover-value">{{ basic_info.document_name or '' }}</span></div>
+      <div class="cover-field"><span class="cover-label">零部件图号：</span><span class="cover-value">{{ basic_info.part_drawing_number or '' }}</span></div>
+      <div class="cover-field"><span class="cover-label">工　　位：</span><span class="cover-value">{{ basic_info.workstation or '' }}</span></div>
+      <div class="cover-field blank"><span class="cover-value"></span></div>
+    </div>
+    <div class="cover-lines signature">
+      <div class="cover-field"><span class="cover-label">编制：</span><span class="cover-value">{{ basic_info.prepared_by or '' }}</span></div>
+      <div class="cover-field"><span class="cover-label">校对：</span><span class="cover-value">{{ basic_info.checked_by or '' }}</span></div>
+      <div class="cover-field"><span class="cover-label">审核：</span><span class="cover-value">{{ basic_info.reviewed_by or '' }}</span></div>
+      <div class="cover-field"><span class="cover-label">标准化：</span><span class="cover-value">{{ basic_info.standardized_by or '' }}</span></div>
+      <div class="cover-field"><span class="cover-label">会签：</span><span class="cover-value">{{ basic_info.countersigned_by or '' }}</span></div>
+      <div class="cover-field"><span class="cover-label">批准：</span><span class="cover-value">{{ basic_info.approved_by or '' }}</span></div>
+    </div>
+    <div class="cover-org">{{ basic_info.company or '' }}{{ basic_info.manufacturing_center or '' }}</div>
+    <div class="cover-date">{{ basic_info.effective_date or '' }}　　第 {{ basic_info.version or '' }} 版 共 {{ total_pages }} 页</div>
+  </div>
+</section>
+
+
+{# ────────────────────── Reference & Version History Page ────────────────────── #}
+{% if normative_references or change_records %}
+<section class="page">
+  {{ confidentiality() }}
+  <div class="reference-frame">
+    {% if normative_references %}
+    <div class="reference-title">规范性引用文件</div>
+    <p class="reference-description">下列文件对于本文件的应用是必不可少的。凡是注日期的引用文件，仅注日期的版本适用于本文件。凡是不注日期的引用文件，其最新版本（包括所有的修改单）适用于本文件。</p>
+    <table class="reference-table">
+      <tr><th>序号</th><th>作业指导书编号</th><th>作业指导书名称</th></tr>
+      {% for ref in normative_references %}
+      <tr><td>{{ ref.sequence }}</td><td>{{ ref.document_number }}</td><td>{{ ref.document_name }}</td></tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+    {% if change_records %}
+    <div class="version-history-title">文件版本历史记录</div>
+    <table class="version-history-table">
+      <tr><th>版本号</th><th>实施日期</th><th>编制者</th><th>变更记录</th><th>文件状态</th></tr>
+      {% for cr in change_records %}
+      <tr><td>{{ cr.version }}</td><td>{{ cr.effective_date or '' }}</td><td>{{ cr.author or '' }}</td><td>{{ cr.description or '' }}</td><td>{{ cr.status or '' }}</td></tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+  </div>
+  {{ page_footer() }}
+</section>
+{% endif %}
+
+
+{# ────────────────────── BOM Pages ────────────────────── #}
+{% for bom_page in bom_pages %}
+<section class="page">
+  {{ doc_header(step_page=False) }}
+  <div class="content-shell">
+    <div class="vertical-label">物
+料
+清
+单</div>
+    <div class="content-body">
+      <table class="bom-table">
+        {% for group_name, rows in bom_page %}
+        <tr class="bom-group"><th colspan="10">{{ group_name }}</th></tr>
+        <tr><th>序号</th><th>物料编码</th><th>物料名称</th><th>规格型号</th><th>数量</th><th>序号</th><th>物料编码</th><th>物料名称</th><th>规格型号</th><th>数量</th></tr>
+        {% for row_pair in rows %}
+        <tr>
+          {% for item in row_pair %}
+          <td>{{ item.sequence }}</td><td>{{ item.material_code }}</td><td>{{ item.material_name }}</td><td>{{ item.specification or '' }}</td><td>{{ item.quantity if item.quantity else '' }}</td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+        {% endfor %}
+      </table>
+    </div>
+  </div>
+  {{ page_footer() }}
+</section>
+{% endfor %}
+
+
+{# ────────────────────── Process Step Resources Page ────────────────────── #}
+{% if process_step_resources %}
+<section class="page">
+  {{ doc_header(step_page=False) }}
+  <div class="content-shell">
+    <div class="vertical-label">工
+步
+作
+业
+资
+源
+需
+求</div>
+    <div class="content-body">
+      <table class="resource-table">
+        <tr><th>工步号</th><th>工步名称</th><th>设备、工艺装备</th><th>规格型号</th><th>作业人数</th><th>作业时间(min)</th></tr>
+        {% for res in process_step_resources %}
+        <tr>
+          <td>{{ res.step_number }}</td><td>{{ res.step_name }}</td>
+          <td>{{ res.equipment_tooling or '' }}</td><td>{{ res.equipment_spec or '' }}</td>
+          <td>{{ res.worker_count if res.worker_count else '' }}</td><td>{{ res.work_time_minutes if res.work_time_minutes else '' }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
+  </div>
+  {{ page_footer() }}
+</section>
+{% endif %}
+
+
+{# ────────────────────── Step Body Pages ────────────────────── #}
+{% for body in step_bodies %}
+{# Determine layout mode and if this step has images #}
+{% set has_main_img = body.image_id and body.image_id in images %}
+{% set layout = body.layout or '竖' %}
+
+{# Step detail page #}
+<section class="page">
+  <table class="doc-header step-page-header">
+    <colgroup>
+      <col style="width:55mm"><col style="width:38mm"><col style="width:24mm"><col style="width:35mm">
+      <col style="width:29mm"><col style="width:31mm"><col style="width:37mm"><col style="width:15mm">
+    </colgroup>
+    <tr>
+      <td>{{ basic_info.company or '' }}</td>
+      <td class="card-name" rowspan="2">{{ basic_info.document_name or basic_info.process_name or '' }}</td>
+      <td class="header-label">工步号</td>
+      <td class="header-label">工步名称</td>
+      <td class="header-label">工步标识</td>
+      <td class="header-label">零部件图号</td>
+      <td class="header-label">零部件名称</td>
+      <td class="header-label">版本</td>
+    </tr>
+    <tr>
+      <td>{{ basic_info.manufacturing_center or '' }}</td>
+      <td>{{ body.step_number }}</td>
+      <td>{{ body.step_name }}</td>
+      <td>{{ step_markers }}</td>
+      <td>{{ basic_info.part_drawing_number or '' }}</td>
+      <td>{{ basic_info.part_name or '' }}</td>
+      <td>{{ basic_info.version or '' }}</td>
+    </tr>
+  </table>
+
+  <div class="step-detail-card with-page-header">
+    <div class="step-content-frame">
+      {% if has_main_img and layout == '横' %}
+      {# Side layout: text left, image right #}
+      <div class="step-body side">
+        <div class="step-text">
+          <p class="step-line"><span class="step-line-label">工步号：</span>{{ body.action_sequence }}</p>
+          <p class="step-line"><span class="step-line-label">动作描述：</span>{{ body.action_description }}</p>
+          {% if body.technical_requirements %}
+          <p class="step-line"><span class="step-line-label">技术要求：</span>{{ body.technical_requirements }}</p>
+          {% endif %}
+        </div>
+        <div class="step-image">{{ image_tag(body.image_id) }}</div>
+      </div>
+      {% elif has_main_img and layout == '竖' %}
+      {# Vertical layout: text top, image bottom #}
+      <div class="step-body vertical">
+        <div class="step-text">
+          <p class="step-line"><span class="step-line-label">工步号：</span>{{ body.action_sequence }}</p>
+          <p class="step-line"><span class="step-line-label">动作描述：</span>{{ body.action_description }}</p>
+          {% if body.technical_requirements %}
+          <p class="step-line"><span class="step-line-label">技术要求：</span>{{ body.technical_requirements }}</p>
+          {% endif %}
+        </div>
+        <div class="step-image">{{ image_tag(body.image_id) }}</div>
+      </div>
+      {% else %}
+      {# Text only layout #}
+      <div class="step-body text-only">
+        <div class="step-text only-text">
+          <p class="step-line"><span class="step-line-label">工步号：</span>{{ body.action_sequence }}</p>
+          <p class="step-line"><span class="step-line-label">动作描述：</span>{{ body.action_description }}</p>
+          {% if body.technical_requirements %}
+          <p class="step-line"><span class="step-line-label">技术要求：</span>{{ body.technical_requirements }}</p>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {{ page_footer() }}
+</section>
+
+{# Image pages #}
+{% for extra_img in body.extra_images %}
+<section class="page">
+  <div class="step-image-page-title">{{ extra_img.title }}</div>
+  <div class="step-image-page-card">{{ image_tag(extra_img.image_id) }}</div>
+  {{ page_footer() }}
+</section>
+{% endfor %}
+{% endfor %}
+
+</body>
+</html>
