@@ -56,11 +56,18 @@ class ProcessCardPDFService:
         for iid in image_ids:
             img_bytes = await self.image_store.read_bytes(iid)
             if not img_bytes:
+                logger.warning(f"图片 {iid} 读取失败或不存在，将跳过（PDF 中不会显示）")
                 continue
             meta = await self.image_store.get(iid)
             mime = meta.mime_type if meta else "image/png"
             b64 = base64.b64encode(img_bytes).decode("ascii")
             images[iid] = f"data:{mime};base64,{b64}"
+
+        logger.info(
+            f"图片处理完成 — 引用 {len(image_ids)} 张, "
+            f"成功读取 {len(images)} 张, "
+            f"失败 {len(image_ids) - len(images)} 张"
+        )
 
         # ── 3. 构建 BOM 页面数据 ────────────────────────────
         # 按 vehicle_group 分组，每组内双栏配对（左/右各一个物料），
@@ -141,13 +148,55 @@ class ProcessCardPDFService:
                         markers.append(ch)
         step_markers = "、".join(markers) if markers else ""
 
+        # ── 5b. 构建工步流程图卡片数据 ─────────────────────────
+        # 每行 4 张卡片，每页 2 行，卡片不足时用空位补齐
+        CARDS_PER_ROW = 4
+        ROWS_PER_PAGE = 2
+        flow_card_pages: list[list[list[dict | None]]] = []
+
+        if data.process_step_resources:
+            # 按 4 个一组拆分为行
+            flow_rows: list[list[dict | None]] = []
+            current: list[dict | None] = []
+            card_image_ids: list[str] = []
+            for res in data.process_step_resources:
+                current.append({
+                    "step_number": res.step_number,
+                    "step_name": res.step_name,
+                    "image_id": res.image_id,
+                })
+                if res.image_id:
+                    card_image_ids.append(res.image_id)
+                if len(current) == CARDS_PER_ROW:
+                    flow_rows.append(current)
+                    current = []
+            if current:
+                while len(current) < CARDS_PER_ROW:
+                    current.append(None)
+                flow_rows.append(current)
+
+            # 按 2 行一页拆分
+            for i in range(0, len(flow_rows), ROWS_PER_PAGE):
+                flow_card_pages.append(flow_rows[i:i + ROWS_PER_PAGE])
+
+            # 诊断日志：检查卡片 image_id 在 images 字典中的命中情况
+            card_hits = sum(1 for iid in card_image_ids if iid in images)
+            logger.info(
+                f"流程图卡片: {len(data.process_step_resources)} 个工步, "
+                f"其中 {len(card_image_ids)} 个引用了图片, "
+                f"命中 {card_hits} 张, "
+                f"未命中 {len(card_image_ids) - card_hits} 张"
+            )
+            if card_image_ids:
+                sample = card_image_ids[:3]
+                logger.info(f"卡片 image_id 样例: {sample}, 在 images 中: {[iid in images for iid in sample]}")
+
         # ── 6. 计算总页数 ────────────────────────────────────
         total_pages = 1  # 封面
         if data.normative_references or data.change_records:
             total_pages += 1  # 规范性引用文件 + 版本历史
         total_pages += len(bom_pages)
-        if data.process_step_resources:
-            total_pages += 1  # 工步作业资源需求表
+        total_pages += len(flow_card_pages)  # 工步流程图（每页 2 行 × 4 卡片）
         for img_count in image_page_counts:
             total_pages += 1 + img_count  # 工步正文页 + 配图页
 
@@ -158,7 +207,7 @@ class ProcessCardPDFService:
             normative_references=data.normative_references,
             change_records=data.change_records,
             bom_pages=bom_pages,
-            process_step_resources=data.process_step_resources,
+            flow_card_pages=flow_card_pages,
             step_bodies=step_bodies,
             step_markers=step_markers,
             images=images,
@@ -180,8 +229,10 @@ class ProcessCardPDFService:
                 headless=True,
             )
             try:
-                page = await browser.new_page()
+                page = await browser.new_page(viewport={"width": 1122, "height": 793})
                 await page.set_content(html_str, wait_until="networkidle")
+                # 等待图片解码完成（base64 图片不触发网络事件，networkidle 可能提前返回）
+                await page.wait_for_timeout(800)
                 pdf_bytes = await page.pdf(
                     format="A4",
                     landscape=True,

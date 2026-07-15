@@ -587,8 +587,8 @@
 {% endfor %}
 
 
-{# ────────────────────── Process Step Resources Page ────────────────────── #}
-{% if process_step_resources %}
+{# ────────────────────── Process Step Flow Card Pages ────────────────────── #}
+{% for flow_page in flow_card_pages %}
 <section class="page">
   {{ doc_header(step_page=False) }}
   <div class="content-shell">
@@ -601,21 +601,39 @@
 需
 求</div>
     <div class="content-body">
-      <table class="resource-table">
-        <tr><th>工步号</th><th>工步名称</th><th>设备、工艺装备</th><th>规格型号</th><th>作业人数</th><th>作业时间(min)</th></tr>
-        {% for res in process_step_resources %}
-        <tr>
-          <td>{{ res.step_number }}</td><td>{{ res.step_name }}</td>
-          <td>{{ res.equipment_tooling or '' }}</td><td>{{ res.equipment_spec or '' }}</td>
-          <td>{{ res.worker_count if res.worker_count else '' }}</td><td>{{ res.work_time_minutes if res.work_time_minutes else '' }}</td>
-        </tr>
+      <div class="flow-wrap">
+        {% for row in flow_page %}
+        <div class="flow-row">
+          {% for card in row %}
+          {% if card %}
+          <div class="flow-card">
+            <div class="flow-card-title">{{ card.step_number }} {{ card.step_name }}</div>
+            <div class="flow-card-media">{{ image_tag(card.image_id) }}</div>
+          </div>
+          {% else %}
+          <div class="flow-card" style="border-color: transparent;">
+            <div class="flow-card-title"></div>
+            <div class="flow-card-media"></div>
+          </div>
+          {% endif %}
+          {% if not loop.last %}
+          <div class="flow-arrow">→</div>
+          {% endif %}
+          {% endfor %}
+        </div>
+        {% if not loop.last %}
+        <div class="flow-down">↓</div>
+        {% endif %}
         {% endfor %}
-      </table>
+      </div>
     </div>
   </div>
+  {% if step_markers %}
+  <div class="flow-legend"><strong>标识说明：</strong>{{ step_markers }}</div>
+  {% endif %}
   {{ page_footer() }}
 </section>
-{% endif %}
+{% endfor %}
 
 
 {# ────────────────────── Step Body Pages ────────────────────── #}
