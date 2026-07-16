@@ -1,38 +1,49 @@
 """工序卡生成 API 路由。"""
 
 from __future__ import annotations
-
+from pathlib import Path
 from litestar import Request, post
 from litestar.response import Response
-from litestar.status_codes import HTTP_200_OK, HTTP_201_CREATED
-
-from app.models import (
-    ImageBatchUploadResponse,
-    ImageUploadResult,
-    InvalidImageReference,
-    ProcessCardInput,
-)
 from app.services.image_store import get_image_store
 from app.services.pdf_service import ProcessCardPDFService
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+ALLOWED_MIME_TYPES: frozenset[str] = frozenset({"image/png", "image/jpeg", "image/bmp", "image/webp"})
+ALLOWED_EXTENSIONS: frozenset[str] = frozenset({".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".svg"})
+MAX_IMAGE_SIZE_BYTES: int = 10 * 1024 * 1024  # 10 MB
 
 
-# ──────────────────────────────────────────────
-# POST /api/process-card/images/upload
-# ──────────────────────────────────────────────
+class ImageUploadInput(BaseModel):
+    filename: str = Field(description="原始文件名，如 'photo.png'")
+    data: bytes = Field(description="图片原始字节", repr=False)
+
+    # ── 1. 文件大小校验 ──────────────────────────────────────
+    @field_validator("data")
+    @classmethod
+    def check_size(cls, v: bytes) -> bytes:
+        if len(v) > MAX_IMAGE_SIZE_BYTES:
+            raise ValueError(f"图片大小 {len(v)} bytes 超过上限 {MAX_IMAGE_SIZE_BYTES} bytes (10 MB)")
+        if len(v) == 0:
+            raise ValueError("图片数据为空")
+        return v
+
+    # ── 2. 扩展名校验 ────────────────────────────────────────
+    @field_validator("filename")
+    @classmethod
+    def check_extension(cls, v: str) -> str:
+        suffix = Path(v).suffix.lower()
+        if suffix not in ALLOWED_EXTENSIONS:
+            raise ValueError(f"不支持的文件类型 '{suffix}'，允许的类型: {sorted(ALLOWED_EXTENSIONS)}")
+        return v
 
 
-@post(
-    path="/api/process-card/images/upload",
-    summary="上传工序卡配图",
-    description=(
-        "上传工序卡所需的全部图片（支持批量）。"
-        "表单字段名使用 `files`，可重复多次以批量上传。"
-        "返回每张图片的唯一 image_id，后续在工序卡 JSON 中引用。"
-    ),
-    status_code=HTTP_201_CREATED,
-)
+class ImageBatchUploadInput(BaseModel):
+    files: list[ImageUploadInput] = Field(description="上传的图片列表", min_length=1)
+
+
+@post("/api/images_upload")
 async def upload_images(request: Request) -> ImageBatchUploadResponse:
-    """批量上传图片，返回 image_id 列表。"""
+    """批量上传图片，返回image_id列表"""
     store = get_image_store()
     results: list[ImageUploadResult] = []
     errors: list[dict] = []
@@ -84,20 +95,7 @@ async def upload_images(request: Request) -> ImageBatchUploadResponse:
     )
 
 
-# ──────────────────────────────────────────────
-# POST /api/process-card/generate
-# ──────────────────────────────────────────────
-
-
-@post(
-    path="/api/process-card/generate",
-    summary="生成工序卡 PDF",
-    description=(
-        "接收完整的工序卡 JSON 数据（图片字段填入 image_id），"
-        "校验图片引用有效性后，生成 PDF 工序卡文件并返回。"
-    ),
-    status_code=HTTP_200_OK,
-)
+@post("/api/generate")
 async def generate_process_card(data: ProcessCardInput) -> Response:
     """生成工序卡 PDF 文件。"""
     store = get_image_store()

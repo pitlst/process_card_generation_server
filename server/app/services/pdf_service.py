@@ -1,24 +1,14 @@
-"""工序卡 PDF 生成服务。
-
-将 ProcessCardInput 数据 + 已上传的图片 → Jinja2 模板 → Playwright(Chromium) → PDF 字节流。
-"""
-
 from __future__ import annotations
-
 import base64
 from pathlib import Path
-
 from jinja2 import Environment, FileSystemLoader
 from loguru import logger
 from playwright.async_api import async_playwright
-
 from app.models import ProcessCardInput
 from app.services.image_store import ImageStore
 
-# ── 硬编码浏览器路径（按实际部署环境修改）────────────────────
-# 支持 Edge / Chrome / Thorium 等任意 Chromium 内核浏览器
-BROWSER_EXECUTABLE_PATH: str = r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
-# ─────────────────────────────────────────────────────────────
+# 硬编码浏览器路径（按实际部署环境修改）
+BROWSER_EXECUTABLE_PATH: str = r"C:\\Program Files (x86)\\Microsoft\\Edge\Application\\msedge.exe"
 
 
 class ProcessCardPDFService:
@@ -28,10 +18,7 @@ class ProcessCardPDFService:
         self.image_store = image_store
 
         template_dir = Path(__file__).resolve().parent.parent.parent / "templates"
-        self.jinja_env = Environment(
-            loader=FileSystemLoader(str(template_dir)),
-            autoescape=False,
-        )
+        self.jinja_env = Environment(loader=FileSystemLoader(str(template_dir)), autoescape=False)
 
     async def generate(self, data: ProcessCardInput) -> bytes:
         """生成工序卡 PDF，返回 PDF 字节流。"""
@@ -224,10 +211,7 @@ class ProcessCardPDFService:
             )
 
         async with async_playwright() as pw:
-            browser = await pw.chromium.launch(
-                executable_path=BROWSER_EXECUTABLE_PATH,
-                headless=True,
-            )
+            browser = await pw.chromium.launch(executable_path=BROWSER_EXECUTABLE_PATH, headless=True)
             try:
                 page = await browser.new_page(viewport={"width": 1122, "height": 793})
                 await page.set_content(html_str, wait_until="networkidle")

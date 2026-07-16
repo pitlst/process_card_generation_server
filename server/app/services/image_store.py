@@ -19,9 +19,7 @@ ALLOWED_MIME_TYPES: frozenset[str] = frozenset({
 })
 
 # 允许的图片扩展名
-ALLOWED_EXTENSIONS: frozenset[str] = frozenset({
-    ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".svg",
-})
+ALLOWED_EXTENSIONS: frozenset[str] = frozenset({".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".svg"})
 
 # 单张图片最大 10 MB
 MAX_IMAGE_SIZE_BYTES: int = 10 * 1024 * 1024
@@ -34,17 +32,11 @@ class ImageMeta:
         self,
         image_id: str,
         original_filename: str,
-        mime_type: str,
-        size_bytes: int,
         stored_path: Path,
-        uploaded_at: datetime,
     ) -> None:
         self.image_id = image_id
         self.original_filename = original_filename
-        self.mime_type = mime_type
-        self.size_bytes = size_bytes
         self.stored_path = stored_path
-        self.uploaded_at = uploaded_at
 
 
 class ImageStore:
@@ -53,6 +45,20 @@ class ImageStore:
         self.storage_dir.mkdir(parents=True, exist_ok=True)
         self._registry: dict[str, ImageMeta] = {}
         self._lock = asyncio.Lock()
+        # 初始化时从磁盘恢复数据
+        for f in self.storage_dir.iterdir():
+            if not f.is_file():
+                continue
+            if f.suffix.lower() in ALLOWED_EXTENSIONS:
+                mime_type, _ = mimetypes.guess_type(f.name)
+                meta = ImageMeta(
+                    image_id=image_id,
+                    original_filename=f.name,
+                    mime_type=mime_type,
+                    size_bytes=f.stat().st_size,
+                    stored_path=f,
+                    uploaded_at=datetime.fromtimestamp(f.stat().st_mtime, tz=timezone.utc),
+                )
 
     async def save(self, file_data: bytes, original_filename: str, mime_type: str | None = None) -> ImageMeta:
         # --- 校验尺寸 ---
